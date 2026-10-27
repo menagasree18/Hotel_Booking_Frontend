@@ -30,11 +30,11 @@ function useAdminData(path, pollInterval = 0) {
       if (timer) clearInterval(timer);
     };
   }, [path, pollInterval]);
-  return { data, loading, error, refresh, setError };
+  return { data, loading, error, refresh, setError, setData };
 }
 
 export function AdminDashboardPage() {
-  const hotels = useAdminData("/hotels", 10000);
+  const hotels = useAdminData("/hotels?admin=true", 10000);
   const rooms = useAdminData("/rooms", 10000);
   const bookings = useAdminData("/bookings/admin/all", 4000);
   const reviews = useAdminData("/hotels/admin/reviews", 10000);
@@ -313,7 +313,18 @@ function AdminReviewList({ reviews, loading, error, showHotel = true, showViewAl
         </div>
         {showViewAll && <Link className="underlined-link" to="/admin/reviews">View all →</Link>}
       </div>
-      {error && <div className="notice notice-error">{error}</div>}
+      {error && (
+        <div className="notice notice-error" style={{ margin: "16px 0", padding: "14px 18px", borderRadius: "6px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span><strong>Failed to load hotels:</strong> {error}</span>
+          <button
+            type="button"
+            onClick={() => refresh()}
+            style={{ marginLeft: "12px", background: "none", border: "none", textDecoration: "underline", cursor: "pointer", color: "inherit", fontWeight: "bold" }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {loading ? (
         <p>Loading reviews…</p>
       ) : reviews?.length ? (
@@ -436,6 +447,12 @@ function RoomForm({ initial = {}, hotels = [], onSave, onClose, busy }) {
     capacity: initial.capacity || 2
   });
 
+  useEffect(() => {
+    if (!form.hotel && sortedHotels.length > 0) {
+      setForm((prev) => ({ ...prev, hotel: sortedHotels[0]._id }));
+    }
+  }, [sortedHotels, form.hotel]);
+
   const field = (name, value) => setForm((old) => ({ ...old, [name]: value }));
 
   return (
@@ -513,17 +530,53 @@ function Modal({ title, onClose, children }) {
 }
 
 export function ManageHotelsPage() {
-  const { data, loading, error, refresh, setError } = useAdminData("/hotels");
+  const { data, loading, error, refresh, setError, setData } = useAdminData("/hotels?admin=true");
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
   const save = async (details) => {
     setBusy(true);
+    setError("");
     try {
       const hotelDetails = { ...details, image: details.imageUrl };
       delete hotelDetails.imageUrl;
-      if (editing?._id) await api.put(`/hotels/${editing._id}`, hotelDetails);
-      else await api.post("/hotels", hotelDetails);
-      setEditing(null); await refresh();
+      let savedHotel = null;
+      if (editing?._id) {
+        const response = await api.put(`/hotels/${editing._id}`, hotelDetails);
+        savedHotel = getData(response).hotel || { ...editing, ...hotelDetails };
+      } else {
+        const response = await api.post("/hotels", hotelDetails);
+        savedHotel = getData(response).hotel;
+        if (savedHotel && savedHotel._id) {
+          try {
+            await api.post("/rooms", {
+              hotel: savedHotel._id,
+              roomNumber: "101",
+              type: "Single",
+              description: `Standard room at ${savedHotel.name || "hotel"}`,
+              pricePerNight: Number(savedHotel.startingPrice) || 5000,
+              capacity: 2,
+              amenities: Array.isArray(savedHotel.amenities) && savedHotel.amenities.length > 0 ? savedHotel.amenities.slice(0, 3) : ["Wi-Fi", "Air conditioning"],
+              available: true
+            });
+          } catch (roomErr) {
+            console.warn("Auto room creation note:", roomErr);
+          }
+        }
+      }
+
+      // Optimistically update the list immediately so the admin sees the new/updated hotel instantly
+      if (savedHotel && savedHotel._id) {
+        setData((prev) => {
+          const exists = prev.some((h) => String(h._id) === String(savedHotel._id));
+          if (exists) {
+            return prev.map((h) => String(h._id) === String(savedHotel._id) ? { ...h, ...savedHotel } : h);
+          }
+          return [savedHotel, ...prev];
+        });
+      }
+
+      setEditing(null);
+      await refresh();
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(false); }
   };
@@ -540,7 +593,7 @@ export function ManageHotelsPage() {
 
 export function ManageRoomsPage() {
   const rooms = useAdminData("/rooms");
-  const hotels = useAdminData("/hotels");
+  const hotels = useAdminData("/hotels?admin=true");
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -548,8 +601,6 @@ export function ManageRoomsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [hotelFilter, setHotelFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [pageSize, setPageSize] = useState("5"); // 5 hotels per page, or "10", or "all"
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Quick lookup map of hotels by MongoDB _id
   const hotelsMap = useMemo(() => {
@@ -664,26 +715,8 @@ export function ManageRoomsPage() {
     return groups;
   }, [filteredRooms, hotelsMap]);
 
-  // Grouping before pagination:
-  // Paginate by hotel group so rooms from the same hotel are NEVER split across pages!
   const totalHotels = hotelGroups.length;
-  const isAllPages = pageSize === "all";
-  const numPageSize = isAllPages ? Math.max(1, totalHotels) : Number(pageSize);
-  const totalPages = isAllPages ? 1 : Math.max(1, Math.ceil(totalHotels / numPageSize));
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, hotelFilter, typeFilter, pageSize]);
-
-  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
-
-  const displayedGroups = useMemo(() => {
-    if (isAllPages || totalHotels <= numPageSize) {
-      return hotelGroups;
-    }
-    const start = (validCurrentPage - 1) * numPageSize;
-    return hotelGroups.slice(start, start + numPageSize);
-  }, [hotelGroups, isAllPages, validCurrentPage, numPageSize, totalHotels]);
+  const displayedGroups = hotelGroups;
 
   const hasActiveFilters = searchQuery.trim() !== "" || hotelFilter !== "all" || typeFilter !== "all";
 
@@ -691,7 +724,6 @@ export function ManageRoomsPage() {
     setSearchQuery("");
     setHotelFilter("all");
     setTypeFilter("all");
-    setCurrentPage(1);
   };
 
   return (
@@ -748,16 +780,6 @@ export function ManageRoomsPage() {
             <option value="Suite">Suite</option>
           </select>
 
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(e.target.value)}
-            className="admin-rooms-select"
-            aria-label="Hotels per page"
-          >
-            <option value="5">5 Hotels / page</option>
-            <option value="10">10 Hotels / page</option>
-            <option value="all">All Hotels</option>
-          </select>
 
           {hasActiveFilters && (
             <button type="button" className="admin-rooms-clear-btn" onClick={clearFilters}>
@@ -881,42 +903,6 @@ export function ManageRoomsPage() {
           </tbody>
         </table>
 
-        {/* Group-before-pagination footer */}
-        {!rooms.loading && totalPages > 1 && (
-          <div className="admin-pagination-bar">
-            <div className="admin-pagination-info">
-              Showing hotels {(validCurrentPage - 1) * numPageSize + 1}–{Math.min(validCurrentPage * numPageSize, totalHotels)} of {totalHotels} ({filteredRooms.length} rooms)
-            </div>
-            <div className="admin-pagination-controls">
-              <button
-                type="button"
-                className="admin-page-btn"
-                disabled={validCurrentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                <button
-                  type="button"
-                  key={pageNum}
-                  className={`admin-page-btn ${pageNum === validCurrentPage ? "is-active" : ""}`}
-                  onClick={() => setCurrentPage(pageNum)}
-                >
-                  {pageNum}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="admin-page-btn"
-                disabled={validCurrentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {editing && (

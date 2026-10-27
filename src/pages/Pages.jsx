@@ -173,6 +173,20 @@ export function HomePage() {
       .catch((reason) => setError(errorMessage(reason)));
     loadDestinations();
   }, [loadDestinations]);
+
+  const allDestinations = React.useMemo(() => {
+    const set = new Set(destinations);
+    hotels.forEach((h) => {
+      if (h.location) {
+        h.location.split(",").forEach((p) => {
+          const t = p.trim();
+          if (t) set.add(t);
+        });
+        set.add(h.location.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [destinations, hotels]);
   const navigate = useNavigate();
   const submitSearch = (event) => {
     event.preventDefault();
@@ -205,10 +219,10 @@ export function HomePage() {
               onChange={(e) => setForm({ ...form, destination: e.target.value })}
             >
               <option value="">All Destinations</option>
-              {form.destination && !destinations.some((d) => d.toLowerCase() === form.destination.trim().toLowerCase()) && (
+              {form.destination && !allDestinations.some((d) => d.toLowerCase() === form.destination.trim().toLowerCase()) && (
                 <option value={form.destination}>{form.destination}</option>
               )}
-              {destinations.map((d) => (
+              {allDestinations.map((d) => (
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
@@ -222,7 +236,25 @@ export function HomePage() {
       </section>
       <section className="section featured-section">
         <div className="section-heading"><div><span className="eyebrow">A LITTLE INSPIRATION</span><h2>Places with a <em>sense of place.</em></h2></div><Link className="underlined-link" to="/hotels">See all stays <span>↗</span></Link></div>
-        {error ? <div className="notice notice-error">{error}</div> : hotels.length ? <div className="hotel-grid">{hotels.slice(0, 3).map((hotel, index) => <HotelCard key={hotel._id} hotel={hotel} index={index} />)}</div> : <div className="hotel-grid skeleton-grid"><div /><div /><div /></div>}
+        {error ? (
+          <div className="notice notice-error" style={{ margin: "20px 0", padding: "16px 20px", borderRadius: "8px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }}>
+            <strong>Unable to load featured stays:</strong> {error}
+            <button
+              type="button"
+              className="button button-outline"
+              onClick={() => {
+                api.get("/hotels").then((response) => setHotels(getData(response).hotels || [])).catch((err) => setError(errorMessage(err)));
+              }}
+              style={{ marginLeft: "16px", padding: "4px 12px", fontSize: "0.85rem" }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : hotels.length ? (
+          <div className="hotel-grid">{hotels.slice(0, 3).map((hotel, index) => <HotelCard key={hotel._id} hotel={hotel} index={index} />)}</div>
+        ) : (
+          <div className="hotel-grid skeleton-grid"><div /><div /><div /></div>
+        )}
       </section>
       <section className="quote-band"><span className="eyebrow">THE HAVEN WAY</span><p>“The best journeys aren't just about where you go. They're about how a place makes you feel.”</p><span className="quote-line" /></section>
     </>
@@ -305,6 +337,20 @@ export function HotelsPage() {
   useEffect(() => {
     loadDestinations();
   }, [loadDestinations]);
+
+  const allDestinations = React.useMemo(() => {
+    const set = new Set(destinations);
+    hotels.forEach((h) => {
+      if (h.location) {
+        h.location.split(",").forEach((p) => {
+          const t = p.trim();
+          if (t) set.add(t);
+        });
+        set.add(h.location.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [destinations, hotels]);
 
   const handleClearAllFilters = () => {
     setSidebarFilters({
@@ -714,10 +760,10 @@ export function HotelsPage() {
             }}
           >
             <option value="">All Destinations</option>
-            {form.destination && !destinations.some((d) => d.toLowerCase() === form.destination.trim().toLowerCase()) && (
+            {form.destination && !allDestinations.some((d) => d.toLowerCase() === form.destination.trim().toLowerCase()) && (
               <option value={form.destination}>{form.destination}</option>
             )}
-            {destinations.map((d) => (
+            {allDestinations.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
@@ -848,7 +894,17 @@ export function HotelsPage() {
           {loading ? (
             <Loading />
           ) : error ? (
-            <div className="notice notice-error">{error}</div>
+            <div className="notice notice-error" style={{ margin: "20px 0", padding: "16px 20px", borderRadius: "8px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span><strong>Failed to load hotels:</strong> {error}</span>
+              <button
+                type="button"
+                className="button button-outline"
+                onClick={() => search()}
+                style={{ marginLeft: "16px", borderColor: "#f87171", color: "#991b1b" }}
+              >
+                Retry
+              </button>
+            </div>
           ) : sortedHotels.length ? (
             <div className="mmt-hotel-list">
               {sortedHotels.map((hotel, index) => (
@@ -1154,9 +1210,17 @@ export function HotelDetailsPage() {
             <p>Try selecting a different room category or adjusting your searched price range, dates, or guests.</p>
           </div>
         ) : (
-          <div className="empty-state">
-            <h3>No rooms are listed right now.</h3>
-            <p>Please check back soon.</p>
+          <div className="empty-state" style={{ padding: "40px 20px", textAlign: "center" }}>
+            <h3>No rooms available yet</h3>
+            <p>This property currently has no rooms listed. Please check back later.</p>
+            <button
+              type="button"
+              className="button button-dark"
+              disabled
+              style={{ opacity: 0.6, cursor: "not-allowed", marginTop: "16px" }}
+            >
+              Booking unavailable
+            </button>
           </div>
         )}
       </section>

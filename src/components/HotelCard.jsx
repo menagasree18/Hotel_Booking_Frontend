@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useWishlist } from "../context/WishlistContext";
 
 export default function HotelCard({
-  hotel,
+  hotel = {},
   index = 0,
   variant = "grid",
   priceMode = "perNight",
@@ -12,8 +12,9 @@ export default function HotelCard({
 }) {
   const location = useLocation();
   const { isInWishlist, toggleWishlist } = useWishlist();
-  const isWishlisted = isInWishlist(hotel._id);
-  const hotelUrl = `/hotels/${hotel._id}${location.search || ""}`;
+  const isWishlisted = hotel?._id ? isInWishlist(hotel._id) : false;
+  const hotelUrl = hotel?._id ? `/hotels/${hotel._id}${location.search || ""}` : "#";
+
   const image =
     hotel.imageUrl ||
     hotel.image ||
@@ -21,10 +22,14 @@ export default function HotelCard({
       ["1566073771259-6a8506099945", "1571896349842-33c89424de2d", "1542314831-068cd1dbfeeb"][index % 3]
     }?auto=format&fit=crop&w=1000&q=85`;
 
-  const starCategory = Number(hotel.starCategory || 4);
-  const rating = Number(hotel.rating || 4.5);
-  const ratingCount = hotel.ratingCount || 0;
-  const ratingText = rating >= 4.5 ? "Excellent" : rating >= 4.0 ? "Very Good" : rating >= 3.5 ? "Good" : "Fair";
+  const starCategory = Number(hotel.starCategory) || 4;
+  const rating = hotel.rating !== undefined && hotel.rating !== null ? Number(hotel.rating) : 0;
+  const ratingCount = Number(hotel.ratingCount) || 0;
+  const ratingText = rating >= 4.5 ? "Excellent" : rating >= 4.0 ? "Very Good" : rating >= 3.5 ? "Good" : rating > 0 ? "Fair" : "New";
+
+  const hasRooms =
+    (hotel.matchingRoomsCount !== undefined && hotel.matchingRoomsCount > 0) ||
+    (Array.isArray(hotel.rooms) && hotel.rooms.length > 0);
 
   // Check Early Bird eligibility
   const searchParams = new URLSearchParams(location.search);
@@ -48,7 +53,7 @@ export default function HotelCard({
     }
   }
 
-  const startingPrice = hotel.startingPrice !== undefined ? Number(hotel.startingPrice) : null;
+  const startingPrice = hotel.startingPrice !== undefined && hotel.startingPrice !== null ? Number(hotel.startingPrice) : null;
   const originalPerNight = startingPrice;
   const discountedPerNight = (startingPrice !== null && isEarlyBirdEligible && earlyBirdDiscount > 0)
     ? Math.round(startingPrice * (1 - earlyBirdDiscount / 100))
@@ -63,14 +68,14 @@ export default function HotelCard({
   const displayFinalPrice = priceMode === "total" && nights > 1 ? discountedTotalPrice : discountedPerNight;
   const displaySavingsAmount = priceMode === "total" && nights > 1 ? totalDiscountAmount : discountAmountPerNight;
 
-  // MakeMyTrip-inspired list card layout
+  // MakeMyTrip-inspired list card layout (Used on Discover / HotelsPage)
   if (variant === "mmt" || variant === "list") {
     return (
       <article className="mmt-hotel-card">
         {/* Left Column: Image & Badges */}
         <div className="mmt-card-image-col">
           <Link to={hotelUrl} className="mmt-card-image-link">
-            <img src={image} alt={hotel.name} loading="lazy" />
+            <img src={image} alt={hotel.name || "Hotel"} loading="lazy" />
             <div className="mmt-image-badges">
               {hotel.propertyType && (
                 <span className="mmt-badge mmt-badge-type">
@@ -111,7 +116,7 @@ export default function HotelCard({
           <div className="mmt-card-header">
             <div className="mmt-card-title-wrap">
               <div className="mmt-meta-badge-row" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                <span className="mmt-star-display">{"★".repeat(starCategory)}</span>
+                <span className="mmt-star-display">{"★".repeat(Math.max(1, Math.min(5, starCategory)))}</span>
                 {hotel.propertyType && (
                   <span className="mmt-property-type-label" style={{
                     fontSize: "10px",
@@ -129,11 +134,11 @@ export default function HotelCard({
                 )}
               </div>
               <h3 className="mmt-card-name">
-                <Link to={hotelUrl}>{hotel.name}</Link>
+                <Link to={hotelUrl}>{hotel.name || "Untitled Hotel"}</Link>
               </h3>
             </div>
             <div className="mmt-card-location">
-              <span>📍 {hotel.subLocation || hotel.address || hotel.location}</span>
+              <span>📍 {hotel.subLocation || hotel.address || hotel.location || "Location not specified"}</span>
               {hotel.subLocation && hotel.location && (
                 <span className="mmt-city-tag"> · {hotel.location}</span>
               )}
@@ -147,12 +152,12 @@ export default function HotelCard({
             </span>
             <span className="mmt-rating-summary">
               <b>{ratingText}</b>
-              {ratingCount > 0 && <small> ({ratingCount} reviews)</small>}
+              {ratingCount > 0 ? <small> ({ratingCount} reviews)</small> : <small> (New hotel)</small>}
             </span>
           </div>
 
           {/* Key Amenities */}
-          {hotel.amenities && hotel.amenities.length > 0 && (
+          {Array.isArray(hotel.amenities) && hotel.amenities.length > 0 && (
             <div className="mmt-amenities-row">
               {hotel.amenities.slice(0, 4).map((amenity, idx) => (
                 <span key={idx} className="mmt-amenity-tag">
@@ -165,7 +170,7 @@ export default function HotelCard({
             </div>
           )}
 
-          {/* Perks Row (Free Cancellation, Instant Booking, Self Check-in) */}
+          {/* Perks Row */}
           <div className="mmt-perks-row">
             {hotel.bookingPreferences?.includes("Free Cancellation") && (
               <span className="mmt-perk mmt-perk-free-cancel">Free Cancellation</span>
@@ -185,13 +190,13 @@ export default function HotelCard({
         {/* Right Column: Pricing & Action */}
         <div className="mmt-card-pricing-col">
           <div className="mmt-price-block">
-            {startingPrice !== null ? (
+            {hasRooms && startingPrice !== null ? (
               <>
                 <span className="mmt-price-from-label">
                   {priceMode === "total" && nights > 1 ? "Total for Stay" : "Starts from"}
                 </span>
                 <div className="mmt-price-amount-wrap">
-                  {isEarlyBirdEligible && earlyBirdDiscount > 0 && (
+                  {isEarlyBirdEligible && earlyBirdDiscount > 0 && originalPerNight && (
                     <del className="mmt-price-original" title="Original price before Early Bird discount">
                       ₹{Number(displayOriginalPrice).toLocaleString("en-IN")}
                     </del>
@@ -226,21 +231,36 @@ export default function HotelCard({
                   </span>
                 ) : null}
                 <span className="mmt-taxes-note">+ Taxes & fees included</span>
+
+                <span className="mmt-rooms-avail">
+                  {hotel.matchingRoomsCount ?? hotel.rooms?.length} {(hotel.matchingRoomsCount ?? hotel.rooms?.length) === 1 ? "room" : "rooms"} available
+                </span>
               </>
             ) : (
-              <span className="mmt-price-check">Check room availability</span>
-            )}
-
-            {((hotel.matchingRoomsCount !== undefined && hotel.matchingRoomsCount > 0) || (hotel.rooms?.length > 0)) && (
-              <span className="mmt-rooms-avail">
-                {hotel.matchingRoomsCount ?? hotel.rooms?.length} {(hotel.matchingRoomsCount ?? hotel.rooms?.length) === 1 ? "room" : "rooms"} available
-              </span>
+              <div className="mmt-no-rooms-avail" style={{ margin: "auto 0" }}>
+                <span className="mmt-price-check" style={{ color: "#8c6d48", fontWeight: 600, display: "block", fontSize: "0.95rem" }}>
+                  No rooms available yet
+                </span>
+                <small style={{ color: "#777", display: "block", marginTop: "2px" }}>Rooms will appear once added</small>
+              </div>
             )}
           </div>
 
-          <Link className="button button-dark mmt-view-hotel-btn" to={hotelUrl}>
-            View Property ↗
-          </Link>
+          {hasRooms ? (
+            <Link className="button button-dark mmt-view-hotel-btn" to={hotelUrl}>
+              View Property ↗
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="button button-dark mmt-view-hotel-btn"
+              disabled
+              style={{ opacity: 0.55, cursor: "not-allowed" }}
+              title="No rooms available yet for this hotel"
+            >
+              No rooms available
+            </button>
+          )}
         </div>
       </article>
     );
@@ -251,7 +271,7 @@ export default function HotelCard({
     <article className="hotel-card">
       <div className="hotel-card-image-wrap">
         <Link to={hotelUrl} className="hotel-card-image">
-          <img src={image} alt={hotel.name} loading="lazy" />
+          <img src={image} alt={hotel.name || "Hotel"} loading="lazy" />
           <span className="image-tag">{hotel.propertyType ? hotel.propertyType.toUpperCase() : "A ROYAL NEST TO RETURN TO"}</span>
           <span className="image-arrow">↗</span>
         </Link>
@@ -271,13 +291,13 @@ export default function HotelCard({
       </div>
       <div className="hotel-card-info">
         <div>
-          <span className="eyebrow">{hotel.propertyType ? `${hotel.propertyType} · ${hotel.location}` : hotel.location}</span>
-          <h3><Link to={hotelUrl}>{hotel.name}</Link></h3>
+          <span className="eyebrow">{hotel.propertyType ? `${hotel.propertyType} · ${hotel.location || ""}` : (hotel.location || "")}</span>
+          <h3><Link to={hotelUrl}>{hotel.name || "Untitled Hotel"}</Link></h3>
         </div>
         <span className="rating">★ {rating.toFixed(1)}</span>
       </div>
       <p className="hotel-card-description">{hotel.description || "A considered stay in a place worth discovering."}</p>
-      {hotel.startingPrice !== undefined && (
+      {hasRooms && startingPrice !== null ? (
         <p className="hotel-card-price">
           From{" "}
           {isEarlyBirdEligible && earlyBirdDiscount > 0 && (
@@ -293,8 +313,23 @@ export default function HotelCard({
             <span className="hotel-matching-rooms-pill"> · {hotel.matchingRoomsCount} {hotel.matchingRoomsCount === 1 ? "room" : "rooms"}</span>
           )}
         </p>
+      ) : (
+        <p className="hotel-card-price">
+          <span style={{ color: "#8c6d48", fontWeight: 600 }}>No rooms available yet</span>
+        </p>
       )}
-      <Link className="card-link" to={hotelUrl}>Explore hotel <span>→</span></Link>
+      {hasRooms ? (
+        <Link className="card-link" to={hotelUrl}>Explore hotel <span>→</span></Link>
+      ) : (
+        <button
+          type="button"
+          className="card-link button-disabled"
+          disabled
+          style={{ opacity: 0.55, cursor: "not-allowed", border: "none", background: "none", padding: 0 }}
+        >
+          No rooms available yet
+        </button>
+      )}
     </article>
   );
 }
