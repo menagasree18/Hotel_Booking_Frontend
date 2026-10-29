@@ -84,6 +84,7 @@ export function AdminLayout() {
         <NavLink to="/admin/rooms">Manage rooms</NavLink>
         <NavLink to="/admin/bookings">All bookings</NavLink>
         <NavLink to="/admin/reviews">Guest reviews</NavLink>
+        
         {/* <Link className="sidebar-back" to="/">← Back to website</Link> */}
         <button className="sidebar-signout" onClick={signOut}>Sign out · {user?.name}</button>
       </aside>

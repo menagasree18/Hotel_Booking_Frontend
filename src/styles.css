@@ -637,8 +637,23 @@ input::-ms-clear {
   .admin-sidebar { min-height: auto; padding: 13px 14px; flex-direction: row; align-items: center; gap: 5px; overflow-x: auto; }
   .admin-brand { flex-shrink: 0; margin: 0 11px 0 0; font-size: 10px; }
   .admin-brand .wordmark-mark { width: 26px; height: 26px; }
-  .sidebar-caption, .sidebar-back, .sidebar-signout { display: none; }
-  .admin-sidebar > a:not(.admin-brand) { flex-shrink: 0; padding: 10px 8px; font-size: 9px; white-space: nowrap; }
+.sidebar-caption,
+.sidebar-back {
+  display: none;
+}
+
+.sidebar-signout {
+  display: block;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border: 1px solid #777d72;
+  border-radius: 4px;
+  color: #ffffff;
+  background: #41483f;
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}  .admin-sidebar > a:not(.admin-brand) { flex-shrink: 0; padding: 10px 8px; font-size: 9px; white-space: nowrap; }
   .admin-content { padding: 31px 17px 50px; }
   .admin-page-heading { align-items: flex-start; flex-direction: column; }
   .admin-page-heading h1 { font-size: 33px; }
